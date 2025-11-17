@@ -1,6 +1,6 @@
 {
   "name": "scanner-app",
-  "homepage": "https://Ander981.github.io/Scanner-de-Codes-Barres",
+  "homepage": ".",
   "version": "0.1.0",
   "engines": {
     "node": "22.x"
