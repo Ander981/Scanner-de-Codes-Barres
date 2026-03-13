@@ -1,3 +1,4 @@
+
 import React, {
   useCallback,
   useEffect,
@@ -14,6 +15,9 @@ import {
   Database,
   Search,
 } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Package, ExternalLink, X, AlertCircle, Database, Search } from 'lucide-react';
+import { saveScan } from "./utils/saveScan";
 
 function UniversalBarcodeScanner() {
   const [scanning, setScanning] = useState(false);
@@ -27,6 +31,16 @@ function UniversalBarcodeScanner() {
   const streamRef = useRef(null);
   const canvasRef = useRef(null);
   const scanIntervalRef = useRef(null);
+  const [showLastScans, setShowLastScans] = useState(false);const openLastScans = () => {
+  const scans = JSON.parse(localStorage.getItem("lastScans")) || [];
+  if (scans.length === 0) {
+    alert("Aucun scan enregistré");
+    return;
+  }
+  setShowLastScans(true); 
+}
+};
+
 
   // APIs (garder les mêmes fonctions que précédemment)
   const fetchOpenFoodFacts = useCallback(async (barcode) => {
@@ -171,9 +185,19 @@ function UniversalBarcodeScanner() {
     }
   }, []);
 
-  const handleBarcodeDetected = useCallback(
-    async (code, force = false) => {
-      if (!force && code === barcode) return;
+
+
+  const handleBarcodeDetected = useCallback(async (code, force = false) => {
+    if (!force && code === barcode) return;
+    
+    setBarcode(code);
+    setScanning(false);
+    saveScan(code); 
+    
+    setLoading(true);
+    setError('');
+    setProductInfo(null);
+    setCurrentSource('');
 
       setBarcode(code);
       setScanning(false);
@@ -221,6 +245,7 @@ function UniversalBarcodeScanner() {
     },
     [barcode, APIs],
   );
+  
   const startCanvasBarcodeDetection = useCallback(() => {
     if (scanIntervalRef.current) {
       clearInterval(scanIntervalRef.current);
@@ -389,6 +414,7 @@ function UniversalBarcodeScanner() {
   const handleManualSearch = () => {
     const code = barcode.trim();
     if (code) {
+      saveScan(code);
       searchProduct(code);
     } else {
       setError("Veuillez entrer un code-barres");
@@ -641,10 +667,39 @@ function UniversalBarcodeScanner() {
                   Rechercher ce produit sur Google
                 </button>
               </div>
+                    <div className="text-center">
+          <button
+            onClick={openLastScans}
+            className="text-indigo-600 hover:text-indigo-800 text-sm underline"
+          >
+            Voir mes cinq derniers scans
+          </button>
+        </div>
             </div>
+            
+              
           )}
         </div>
-
+{showLastScans && (
+  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+    <h3 className="text-gray-800 font-semibold mb-2">Derniers scans :</h3>
+    <ul className="space-y-1">
+      {JSON.parse(localStorage.getItem("lastScans") || "[]").map((code) => (
+        <li key={code}>
+          <button
+            onClick={() => {
+              searchProduct(code);
+              setShowLastScans(false); // ferme la liste après sélection
+            }}
+            className="text-indigo-600 hover:text-indigo-800 text-sm underline"
+          >
+            {code}
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
         <div className="bg-white rounded-xl shadow-md p-4 text-center text-sm text-gray-600">
           <p>
             📷 Compatible tous navigateurs | 🛍️ Tous types de produits | 🔍
@@ -657,6 +712,6 @@ function UniversalBarcodeScanner() {
       </div>
     </div>
   );
-}
+;
 
 export default UniversalBarcodeScanner;
