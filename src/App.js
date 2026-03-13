@@ -85,7 +85,7 @@ function UniversalBarcodeScanner() {
       setCameraError(`Erreur caméra: ${err.message}`);
     }
   }, []);
-
+// eslint-disable-next-line react-hooks/exhaustive-deps
   const handleBarcodeDetected = useCallback((code) => {
     if (code === barcode) return;
     setScanning(false);
