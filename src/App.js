@@ -1,7 +1,6 @@
-import React, { useCallback, useEffect, useRef, useMemo,useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, Package, ExternalLink, X, AlertCircle, Database, Search } from 'lucide-react';
-import { saveScan } from "./utils/saveScan";
-
+import { saveScan, getLastScans } from "./utils/saveScan";
 
 function UniversalBarcodeScanner() {
   const [scanning, setScanning] = useState(false);
@@ -16,119 +15,63 @@ function UniversalBarcodeScanner() {
   const canvasRef = useRef(null);
   const scanIntervalRef = useRef(null);
   const [showLastScans, setShowLastScans] = useState(false);
+  const [lastScans, setLastScans] = useState([]);
+
   const openLastScans = () => {
-  const scans = JSON.parse(localStorage.getItem("lastScans")) || [];
-  if (scans.length === 0) {
-    alert("Aucun scan enregistré");
-    return;
-  }
-  setShowLastScans(true); // On montre la liste des derniers scans
-};
-
-  // APIs (garder les mêmes fonctions que précédemment)
-  const fetchOpenFoodFacts = async (barcode) => {
-    try {
-      const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
-      const data = await response.json();
-      
-      if (data.status === 1 && data.product) {
-        const product = data.product;
-        return {
-          name: product.product_name || 'Produit inconnu',
-          brand: product.brands || 'Marque inconnue',
-          image: product.image_url,
-          description: product.generic_name || product.ingredients_text || 'Description non disponible',
-          category: product.categories || 'Non spécifié',
-          barcode: barcode,
-          source: 'Open Food Facts',
-          url: product.url || `https://world.openfoodfacts.org/product/${barcode}`
-        };
-      }
-    } catch (error) {
-      console.error('Erreur Open Food Facts:', error);
+    const scans = getLastScans();
+    if (scans.length === 0) {
+      alert("Aucun scan enregistré");
+      return;
     }
-    return null;
+    setLastScans(scans);
+    setShowLastScans(true);
   };
 
-  const fetchBarcodeLookup = async (barcode) => {
-    const API_KEY = 'dz8v5catin5nrym8s4a0gqktl6otb6';
-    try {
-      const response = await fetch(`https://api.barcodelookup.com/v3/products?barcode=${barcode}&formatted=y&key=${API_KEY}`);
-      const data = await response.json();
-      
-      if (data.products && data.products.length > 0) {
-        const product = data.products[0];
-        return {
-          name: product.product_name || product.title,
-          brand: product.brand || 'Marque inconnue',
-          image: product.images[0],
-          description: product.description,
-          category: product.category,
-          barcode: barcode,
-          source: 'Barcode Lookup',
-          url: product.product_url || `https://www.barcodelookup.com/${barcode}`
-        };
+  const searchByBarcode = useCallback(async (code) => {
+    setLoading(true);
+    setError('');
+    setProductInfo(null);
+    setCurrentSource('');
+    setBarcode(code);
+    saveScan(code);
+
+    console.log(`🔍 Recherche du code: ${code}`);
+
+    for (const api of APIs) {
+      console.log(`Tentative avec ${api.name}...`);
+      setCurrentSource(api.name);
+
+      try {
+        const product = await api.fetch(code);
+        if (product) {
+          console.log(`✅ Produit trouvé via ${api.name}`);
+          setProductInfo(product);
+          setLoading(false);
+          setShowLastScans(false);
+          return;
+        }
+      } catch (err) {
+        console.error(`Erreur avec ${api.name}:`, err);
       }
-    } catch (error) {
-      console.error('Erreur Barcode Lookup:', error);
+
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
-    return null;
-  };
 
-  const fetchUPCitemdb = async (barcode) => {
-    try {
-      const response = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
-      const data = await response.json();
-      
-      if (data.code === 'OK' && data.items.length > 0) {
-        const item = data.items[0];
-        return {
-          name: item.title,
-          brand: item.brand,
-          image: item.images[0],
-          description: item.description,
-          category: item.category,
-          barcode: barcode,
-          source: 'UPCitemdb',
-          url: item.elid || `https://www.upcitemdb.com/upc/${barcode}`
-        };
-      }
-    } catch (error) {
-      console.error('Erreur UPCitemdb:', error);
-    }
-    return null;
-  };
+    setProductInfo({
+      name: `Produit ${code}`,
+      brand: 'Marque inconnue',
+      image: '',
+      description: 'Ce produit existe mais n\'est pas répertorié dans nos bases de données.',
+      category: 'Produit non classifié',
+      barcode: code,
+      source: 'Système',
+      url: `https://www.google.com/search?q=${code}`
+    });
 
-  const fetchGenericSearch = async (barcode) => {
-    try {
-      const response = await fetch(`https://api.duckduckgo.com/?q=${barcode}&format=json`);
-      const data = await response.json();
-      
-      if (data.Heading || data.Abstract) {
-        return {
-          name: data.Heading || `Produit ${barcode}`,
-          brand: data.AbstractSource || 'Information générique',
-          image: data.Image || '',
-          description: data.Abstract || 'Informations disponibles via recherche web',
-          category: data.AbstractText ? 'Produit grand public' : 'Non spécifié',
-          barcode: barcode,
-          source: 'Recherche Web',
-          url: data.AbstractURL || `https://google.com/search?q=${barcode}`
-        };
-      }
-    } catch (error) {
-      console.error('Erreur recherche générique:', error);
-    }
-    return null;
-  };
-
-  const APIs = useMemo(() => [
-
-    { name: 'Barcode Lookup', fetch: fetchBarcodeLookup, premium: true },
-    { name: 'UPCitemdb', fetch: fetchUPCitemdb, premium: false },
-    { name: 'Open Food Facts', fetch: fetchOpenFoodFacts, premium: false },
-    { name: 'Recherche Web', fetch: fetchGenericSearch, premium: false }
-  ]);
+    setLoading(false);
+    setCurrentSource('');
+    setShowLastScans(false);
+  }, []);
 
   const handleCameraError = useCallback((err) => {
     setCameraError('Impossible d\'accéder à la caméra. Vérifiez les permissions du navigateur.');
@@ -143,53 +86,11 @@ function UniversalBarcodeScanner() {
     }
   }, []);
 
-  const handleBarcodeDetected = useCallback(async (code, force = false) => {
-    if (!force && code === barcode) return;
-    
-    setBarcode(code);
+  const handleBarcodeDetected = useCallback((code) => {
+    if (code === barcode) return;
     setScanning(false);
-    saveScan(code); 
-    
-    setLoading(true);
-    setError('');
-    setProductInfo(null);
-    setCurrentSource('');
-
-    console.log(`🔍 Recherche du code: ${code}`);
-
-    for (const api of APIs) {
-      console.log(`Tentative avec ${api.name}...`);
-      setCurrentSource(api.name);
-      
-      try {
-        const product = await api.fetch(code);
-        if (product) {
-          console.log(`✅ Produit trouvé via ${api.name}`);
-          setProductInfo(product);
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error(`Erreur avec ${api.name}:`, err);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-
-    setProductInfo({
-      name: `Produit ${code}`,
-      brand: 'Marque inconnue',
-      image: '',
-      description: 'Ce produit existe mais n\'est pas répertorié dans nos bases de données.',
-      category: 'Produit non classifié',
-      barcode: code,
-      source: 'Système',
-      url: `https://www.google.com/search?q=${code}`
-    });
-    
-    setLoading(false);
-    setCurrentSource('');
-  }, [barcode, APIs]);
+    searchByBarcode(code);
+  }, [barcode, searchByBarcode]);
 
   const detectWithNativeBarcodeDetector = useCallback(async () => {
     try {
@@ -303,53 +204,10 @@ function UniversalBarcodeScanner() {
     return () => stopCamera();
   }, [scanning, startCamera, stopCamera]);
 
-  const searchProduct = async (barcode) => {
-    setLoading(true);
-    setError('');
-    setProductInfo(null);
-    setCurrentSource('');
-
-    console.log(`🔍 Recherche du code: ${barcode}`);
-
-    for (const api of APIs) {
-      console.log(`Tentative avec ${api.name}...`);
-      setCurrentSource(api.name);
-      
-      try {
-        const product = await api.fetch(barcode);
-        if (product) {
-          console.log(`✅ Produit trouvé via ${api.name}`);
-          setProductInfo(product);
-          setLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error(`Erreur avec ${api.name}:`, err);
-      }
-      
-      await new Promise(resolve => setTimeout(resolve, 300));
-    }
-
-    setProductInfo({
-      name: `Produit ${barcode}`,
-      brand: 'Marque inconnue',
-      image: '',
-      description: 'Ce produit existe mais n\'est pas répertorié dans nos bases de données.',
-      category: 'Produit non classifié',
-      barcode: barcode,
-      source: 'Système',
-      url: `https://www.google.com/search?q=${barcode}`
-    });
-    
-    setLoading(false);
-    setCurrentSource('');
-  };
-
   const handleManualSearch = () => {
     const code = barcode.trim();
     if (code) {
-      saveScan(code);
-      searchProduct(code);
+      searchByBarcode(code);
     } else {
       setError('Veuillez entrer un code-barres');
     }
@@ -361,6 +219,7 @@ function UniversalBarcodeScanner() {
     setError('');
     setCameraError('');
     setScanning(false);
+    setShowLastScans(false);
   };
 
   const openDetails = (url) => {
@@ -583,19 +442,22 @@ function UniversalBarcodeScanner() {
           </button>
         </div>
             </div>
-              
           )}
         </div>
         {showLastScans && (
   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
-    <h3 className="text-gray-800 font-semibold mb-2">Derniers scans :</h3>
+    <div className="flex justify-between items-center mb-2">
+      <h3 className="text-gray-800 font-semibold">Derniers scans :</h3>
+      <button onClick={() => setShowLastScans(false)} className="text-gray-500 hover:text-gray-700">
+        <X className="w-5 h-5" />
+      </button>
+    </div>
     <ul className="space-y-1">
-      {JSON.parse(localStorage.getItem("lastScans") || "[]").map((code) => (
+      {lastScans.map((code) => (
         <li key={code}>
           <button
             onClick={() => {
-              searchProduct(code);
-              setShowLastScans(false); // Ferme la liste après sélection
+              searchByBarcode(code);
             }}
             className="text-indigo-600 hover:text-indigo-800 text-sm underline"
           >
@@ -610,7 +472,7 @@ function UniversalBarcodeScanner() {
         <div className="bg-white rounded-xl shadow-md p-4 text-center text-sm text-gray-600">
           <p>📷 Compatible tous navigateurs | 🛍️ Tous types de produits | 🔍 Multiples sources de données</p>
         </div>
-              <p className="text-center text-gray-500 text-sm">
+        <p className="text-center text-gray-500 text-sm mt-2">
           Développée par Anderson MICHEL
         </p>
 
@@ -619,5 +481,109 @@ function UniversalBarcodeScanner() {
   );
 }
 
+// --- Fonctions API déplacées en dehors du composant ---
+// Elles n'ont pas besoin d'être recréées à chaque rendu.
+const fetchOpenFoodFacts = async (barcode) => {
+  try {
+    const response = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+    const data = await response.json();
+    
+    if (data.status === 1 && data.product) {
+      const product = data.product;
+      return {
+        name: product.product_name || 'Produit inconnu',
+        brand: product.brands || 'Marque inconnue',
+        image: product.image_url,
+        description: product.generic_name || product.ingredients_text || 'Description non disponible',
+        category: product.categories || 'Non spécifié',
+        barcode: barcode,
+        source: 'Open Food Facts',
+        url: product.url || `https://world.openfoodfacts.org/product/${barcode}`
+      };
+    }
+  } catch (error) {
+    console.error('Erreur Open Food Facts:', error);
+  }
+  return null;
+};
+
+const fetchBarcodeLookup = async (barcode) => {
+  const API_KEY = 'dz8v5catin5nrym8s4a0gqktl6otb6';
+  try {
+    const response = await fetch(`https://api.barcodelookup.com/v3/products?barcode=${barcode}&formatted=y&key=${API_KEY}`);
+    const data = await response.json();
+    
+    if (data.products && data.products.length > 0) {
+      const product = data.products[0];
+      return {
+        name: product.product_name || product.title,
+        brand: product.brand || 'Marque inconnue',
+        image: product.images[0],
+        description: product.description,
+        category: product.category,
+        barcode: barcode,
+        source: 'Barcode Lookup',
+        url: product.product_url || `https://www.barcodelookup.com/${barcode}`
+      };
+    }
+  } catch (error) {
+    console.error('Erreur Barcode Lookup:', error);
+  }
+  return null;
+};
+
+const fetchUPCitemdb = async (barcode) => {
+  try {
+    const response = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+    const data = await response.json();
+    
+    if (data.code === 'OK' && data.items.length > 0) {
+      const item = data.items[0];
+      return {
+        name: item.title,
+        brand: item.brand,
+        image: item.images[0],
+        description: item.description,
+        category: item.category,
+        barcode: barcode,
+        source: 'UPCitemdb',
+        url: item.elid || `https://www.upcitemdb.com/upc/${barcode}`
+      };
+    }
+  } catch (error) {
+    console.error('Erreur UPCitemdb:', error);
+  }
+  return null;
+};
+
+const fetchGenericSearch = async (barcode) => {
+  try {
+    const response = await fetch(`https://api.duckduckgo.com/?q=${barcode}&format=json`);
+    const data = await response.json();
+    
+    if (data.Heading || data.Abstract) {
+      return {
+        name: data.Heading || `Produit ${barcode}`,
+        brand: data.AbstractSource || 'Information générique',
+        image: data.Image || '',
+        description: data.Abstract || 'Informations disponibles via recherche web',
+        category: data.AbstractText ? 'Produit grand public' : 'Non spécifié',
+        barcode: barcode,
+        source: 'Recherche Web',
+        url: data.AbstractURL || `https://google.com/search?q=${barcode}`
+      };
+    }
+  } catch (error) {
+    console.error('Erreur recherche générique:', error);
+  }
+  return null;
+};
+
+const APIs = [
+  { name: 'Barcode Lookup', fetch: fetchBarcodeLookup, premium: true },
+  { name: 'UPCitemdb', fetch: fetchUPCitemdb, premium: false },
+  { name: 'Open Food Facts', fetch: fetchOpenFoodFacts, premium: false },
+  { name: 'Recherche Web', fetch: fetchGenericSearch, premium: false }
+];
 
 export default UniversalBarcodeScanner;
