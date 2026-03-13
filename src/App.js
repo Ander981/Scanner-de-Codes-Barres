@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useMemo,useState } from 'react';
 import { Camera, Package, ExternalLink, X, AlertCircle, Database, Search } from 'lucide-react';
 import { saveScan } from "./utils/saveScan";
 
@@ -122,12 +122,13 @@ function UniversalBarcodeScanner() {
     return null;
   };
 
-  const APIs = [
+  const APIs = useMemo(() => [
+
     { name: 'Barcode Lookup', fetch: fetchBarcodeLookup, premium: true },
     { name: 'UPCitemdb', fetch: fetchUPCitemdb, premium: false },
     { name: 'Open Food Facts', fetch: fetchOpenFoodFacts, premium: false },
     { name: 'Recherche Web', fetch: fetchGenericSearch, premium: false }
-  ];
+  ]);
 
   const handleCameraError = useCallback((err) => {
     setCameraError('Impossible d\'accéder à la caméra. Vérifiez les permissions du navigateur.');
@@ -188,7 +189,7 @@ function UniversalBarcodeScanner() {
     
     setLoading(false);
     setCurrentSource('');
-  }, [barcode]);
+  }, [barcode, APIs]);
 
   const detectWithNativeBarcodeDetector = useCallback(async () => {
     try {
